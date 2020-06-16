@@ -1,0 +1,105 @@
+-- Copyright © 2020 Digital Asset (Switzerland) GmbH and/or its affiliates
+-- Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+-- THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+-- DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+daml 1.2
+
+module CBDCv4 where
+
+import DA.Assert
+
+template CBDCv4
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+    currency : Text
+  where
+    signatory issuer, owner
+
+    controller owner can
+      -- Creates a new TransferRequest
+      Transfer : ContractId TransferRequest
+        with receiver : Party
+        do
+          create TransferRequest with
+            receiver
+            digitalCash = this
+
+template TransferRequest
+  with
+    receiver : Party
+    digitalCash : CBDCv4 -- This contains data required to create a new
+                         -- CBDCv4, i.e., issuer, amount, currency
+  where
+    signatory digitalCash.issuer, digitalCash.owner
+
+    controller receiver can
+      -- Creates a new CBDCv4 with the new owner
+      Accept : ContractId CBDCv4
+        do
+          create digitalCash with owner = receiver
+
+cbdcv4Test : Scenario ()
+cbdcv4Test = scenario do
+  bank <- getParty "Central Bank"
+  alice <- getParty "Alice"
+
+  money <-
+    submit bank do
+      create CBDCv4 with
+        issuer = bank
+        owner = bank
+        amount = 100.0
+        currency = "USD"
+
+  -- Test privacy
+  submitMustFail alice do
+    fetch money
+
+  request <-
+    submit bank do
+      exercise money Transfer with
+        receiver = alice
+
+  -- Test consent
+  submitMustFail bank do
+    exercise request Accept
+
+  -- Test immutability, consistency: the money is archived and replaced by a TransferRequest
+  submitMustFail alice do
+    fetch money
+  submitMustFail bank do
+    fetch money
+
+  moneyOfAlice <-
+    submit alice do
+      exercise request Accept
+
+  -- Alice has access to the transferred money
+  contract <-
+    submit alice do
+      fetch moneyOfAlice
+  contract.owner === alice
+
+  -- No archive without two consents
+  submitMustFail alice do
+    exercise moneyOfAlice Archive
+  submitMustFail bank do
+    exercise moneyOfAlice Archive
+
+  -- Alice can pass the money to Bob
+  bob <- getParty "Bob"
+  request <-
+    submit alice do
+      exercise moneyOfAlice Transfer with
+        receiver = bob
+  moneyOfBob <-
+    submit bob do
+      exercise request Accept
+
+  contract <-
+    submit bob do
+      fetch moneyOfBob
+  contract.owner === bob

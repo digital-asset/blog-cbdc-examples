@@ -1,0 +1,51 @@
+-- Copyright © 2020 Digital Asset (Switzerland) GmbH and/or its affiliates
+-- Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+-- THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+-- DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+daml 1.2
+
+module CBDCv3 where
+
+template CBDCv3
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+    currency : Text
+  where
+    signatory issuer, owner
+
+    -- Note: This won't work!
+    controller owner can
+      SimplifiedTransfer : ContractId CBDCv3
+        with
+          receiver : Party
+        do
+          create this with
+            owner = receiver
+
+cbdcv3Test : Scenario ()
+cbdcv3Test = scenario do
+  bank <- getParty "Central Bank"
+  alice <- getParty "Alice"
+
+  -- Central Bank cannot give money to Alice without her consent
+  submitMustFail bank do
+    create CBDCv3 with
+      issuer = bank
+      owner = alice
+      amount = 100.0
+      currency = "USD"
+
+  money <-
+    submit bank do
+      create CBDCv3 with
+        issuer = bank
+        owner = bank
+        amount = 100.0
+        currency = "USD"
+
+  submitMustFail bank do
+    exercise money SimplifiedTransfer with
+      receiver = alice

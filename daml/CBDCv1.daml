@@ -1,0 +1,39 @@
+-- Copyright © 2020 Digital Asset (Switzerland) GmbH and/or its affiliates
+-- Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+-- THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+-- DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+daml 1.2
+
+module CBDCv1 where
+
+template CBDCv1
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+    currency : Text
+    -- Additional relevant data...
+  where
+    signatory issuer
+
+cbdcv1Test : Scenario ()
+cbdcv1Test = scenario do
+  bank <- getParty "Central Bank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  submit bank do
+    create CBDCv1 with
+      issuer = bank
+      owner = alice
+      amount = 100.0
+      currency = "USD"
+
+  -- Alice cannot impersonate the Central Bank
+  submitMustFail alice do
+    create CBDCv1 with
+      issuer = bank
+      owner = alice
+      amount = 100.0
+      currency = "USD"

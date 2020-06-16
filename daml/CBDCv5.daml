@@ -1,0 +1,89 @@
+-- Copyright © 2020 Digital Asset (Switzerland) GmbH and/or its affiliates
+-- Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
+-- THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL
+-- DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+daml 1.2
+
+module CBDCv5 where
+
+import DA.Assert
+
+template CBDCv5
+  with
+    issuer : Party
+    owner : Party
+    amount : Decimal
+    currency : Text
+  where
+    signatory issuer, owner
+
+    controller owner can
+      -- Creates a new TransferRequest
+      Transfer : ContractId TransferRequest
+        with receiver : Party
+        do
+          create TransferRequest with
+            receiver
+            digitalCash = this
+
+      -- Creates a new TransferRequest anonymously
+      AnonymousTransfer : ContractId TransferRequest
+        with receiver : Party
+        do
+          requestToIssuer <- create TransferRequest with
+            receiver = issuer
+            digitalCash = this
+          moneyOfIssuerCid <- exercise requestToIssuer Accept
+          exercise moneyOfIssuerCid Transfer with receiver
+
+template TransferRequest
+  with
+    receiver : Party
+    digitalCash : CBDCv5 -- This contains all data required to create a new
+                         -- CBDC, i.e., issuer, owner, ...
+  where
+    signatory digitalCash.issuer, digitalCash.owner
+
+    controller receiver can
+      -- Creates a new CBDCv5 with the new owner
+      Accept : ContractId CBDCv5
+        do
+          create digitalCash with owner = receiver
+
+cbdcv5 : Scenario ()
+cbdcv5 = scenario do
+  bank <- getParty "Central Bank"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+
+  money <-
+    submit bank do
+      create CBDCv5 with
+        issuer = bank
+        owner = bank
+        amount = 100.0
+        currency = "USD"
+
+  request <-
+    submit bank do
+      exercise money Transfer with
+        receiver = alice
+  moneyOfAlice <-
+    submit alice do
+      exercise request Accept
+
+  requestToBobFromCB <-
+    submit alice do
+      exercise moneyOfAlice AnonymousTransfer with
+        receiver = bob
+
+  contract <-
+    submit bob do
+      fetch requestToBobFromCB
+  contract.digitalCash.owner === bank
+
+  submit bob do
+    exercise requestToBobFromCB Accept
+
+  pure ()
