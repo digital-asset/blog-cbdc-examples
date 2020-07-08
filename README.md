@@ -10,7 +10,7 @@
 
 ## About
 
-This repository contains a DAML project with code samples for the blogpost *"Why DAML is great to represent digital currency"*.
+This repository contains a DAML project with code samples for the blogpost *"[Why DAML is great to represent digital currency](https://daml.com/daml-driven/why-daml-is-great-to-represent-digital-currency/)"*.
 
 You can start it locally with the command
 ```
